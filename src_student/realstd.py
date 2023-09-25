@@ -50,7 +50,31 @@ class RealStd(Peer):
         
         # Sort peers by id.  This is probably not a useful sort, but other 
         # sorts might be useful
-        peers.sort(key=lambda p: p.id)
+
+        # peers.sort(key=lambda p: p.id)
+        #peers.sort(key=lambda p: p.AgentHistory)
+
+        # do we need to filter peers by interested peers, i.e., those that want something from ref client?
+        
+        # We're talking about one specific player p
+        # goal is to build up avg_download_from which will index by peer ids so that we can
+        # eventually sort by avg downloaded from rates (peers upload to RC)
+        # avg_download_from = [(0, 0) for i in range(len(peers))] # downloading from peers for the past two rounds
+        avg_download_from = {}
+        rounds = self.AgentHistory.downloads[-2:] # for the reference client, the list of downloads (and who we're downloading from) for the last two rounds
+        for round in rounds:
+            for download in round:
+                if download.from_id not in avg_download_from.keys():
+                    avg_download_from[download.from_id] = download.blocks
+                else:
+                    avg_download_from[download.from_id] += download.blocks
+
+        # order in decreasing order of av download rate received from peers, breaking ties at random
+        # and excluding any peers that have not sent any data -> we already don't have peers that haven't sent any data
+        
+        
+
+
         # request all available pieces from all peers!
         # (up to self.max_requests from each)
         for peer in peers:

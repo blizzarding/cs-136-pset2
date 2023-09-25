@@ -46,6 +46,7 @@ class PeerInfo:
     def __init__(self, id, available):
         self.id = id
         self.available_pieces = available
+        # make a list to indicate who they're blocked/unblocked by
 
     def __repr__(self):
         return "PeerInfo(id=%s)" % self.id

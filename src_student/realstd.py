@@ -71,9 +71,12 @@ class RealStd(Peer):
 
         # order in decreasing order of av download rate received from peers, breaking ties at random
         # and excluding any peers that have not sent any data -> we already don't have peers that haven't sent any data
-        
-        
 
+        preference = dict(sorted(avg_download_from.items(), key=lambda item: item[1], reverse = True))
+
+        # TO-DO: BREAK TIES BY RANDOM
+
+        
 
         # request all available pieces from all peers!
         # (up to self.max_requests from each)

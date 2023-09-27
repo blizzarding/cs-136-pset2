@@ -65,7 +65,9 @@ class RealStd(Peer):
         # you go through all peers, see all avail ones, manually count through how many of each block is avail, and then 
         # you can request multiple pieces from the same peer (request all the time as much as possible)
         # you send requests in order of rarity within peers -> you request from everyone, and everyone can upload a different amount to you (but all in the same round)
-
+        for peer in peers:
+            for piece in peer.available_pieces:
+                
         # request all available pieces from all peers!
         # (up to self.max_requests from each)
         for peer in peers:

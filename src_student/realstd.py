@@ -113,12 +113,6 @@ class RealStd(Peer):
             # change my internal state for no reason
             self.dummy_state["cake"] = "pie"
 
-            request = random.choice(requests) # requests is the list of people who requested from you
-            chosen = [request.requester_id]
-            # Evenly "split" my upload bandwidth among the one chosen requester
-            bws = even_split(self.up_bw, len(chosen))
-            '''how do we deal with things that aren't dividable? -> you divide as best as possible and prefer to give more to those earlier in the rankings'''
-
             '''to be deleted:'''
             # We're talking about one specific player p
             # goal is to build up avg_download_from which will index by peer ids so that we can
@@ -143,7 +137,17 @@ class RealStd(Peer):
 
             preference = (sorted(avg_download_from.items(), key=lambda item: item[1], reverse = True))[:3]
             # [(peer_id, numblocks), (peer_id, numblocks), (peer_id, numblocks)]
-            
+        
+        chosen = [item[0] for item in preference]
+
+        # insert logic for defining the optimistic unblock here
+        optimistic_unblock = self.optimistic_unblock
+        request = random.choice(requests) # requests is the list of people who requested from you
+        
+        # Evenly "split" my upload bandwidth among the 3 chosen requesters and the 1 optimistic unblock
+        '''how do we deal with things that aren't dividable? -> you divide as best as possible and prefer to give more to those earlier in the rankings'''
+        bws = even_split(self.up_bw, len(chosen + 1))
+
         # create actual uploads out of the list of peer ids and bandwidths
         uploads = [Upload(self.id, peer_id, bw)
                    for (peer_id, bw) in zip(chosen, bws)]

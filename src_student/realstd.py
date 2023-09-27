@@ -117,6 +117,7 @@ class RealStd(Peer):
             chosen = [request.requester_id]
             # Evenly "split" my upload bandwidth among the one chosen requester
             bws = even_split(self.up_bw, len(chosen))
+            '''how do we deal with things that aren't dividable? -> you divide as best as possible and prefer to give more to those earlier in the rankings'''
 
             '''to be deleted:'''
             # We're talking about one specific player p
@@ -128,7 +129,7 @@ class RealStd(Peer):
             requesters = [request.requester_id for request in requests]
             avg_download_from = {}
             rounds = history.downloads[-2:]
-            random.shuffle(rounds) # randomize order of lists; we randomize and then sort to break ties randomly!
+            
 
             for round in rounds:
                 for download in round:
@@ -136,6 +137,9 @@ class RealStd(Peer):
                         avg_download_from[download.from_id] = download.blocks
                     else:
                         avg_download_from[download.from_id] += download.blocks
+
+            # random.shuffle(rounds) # randomize order of lists; we randomize and then sort to break ties randomly!
+            # # either randomize requesters or we randomize rounds
 
             preference = (sorted(avg_download_from.items(), key=lambda item: item[1], reverse = True))[:3]
             # [(peer_id, numblocks), (peer_id, numblocks), (peer_id, numblocks)]

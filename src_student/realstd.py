@@ -67,7 +67,8 @@ class RealStd(Peer):
         # you send requests in order of rarity within peers -> you request from everyone, and everyone can upload a different amount to you (but all in the same round)
         for peer in peers:
             for piece in peer.available_pieces:
-                
+
+
         # request all available pieces from all peers!
         # (up to self.max_requests from each)
         for peer in peers:

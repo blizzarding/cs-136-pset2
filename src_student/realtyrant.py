@@ -31,6 +31,15 @@
 # Case 2: If they unblock us for previous r rounds in a row, u_i = (1- gamma)^r u_i where gamma = 0.1 and r = 3
 # Those parameters can be changed to optimize (or change gamme and r for tourney)
 # In all other cases, don't change u_i
+
+# for uploads:
+# Requests overview for BitTyrant
+# Requests () Method
+# Look at all the requests 
+# get d_i/u_i for each peer in requests, rank in decreasing order
+# give the peer with the most d_i/u_i u_i. Then iterate through sorted peers and give them all their u_i
+# give the last person whatever you have left
+
 import random
 import logging
 
@@ -43,13 +52,6 @@ class RealTyrant(Peer):
         print(("post_init(): %s here!" % self.id))
         self.dummy_state = dict()
         self.dummy_state["cake"] = "lie"
-    
-    # Requests overview for BitTyrant
-    # Requests () Method
-    # Look at all the requests 
-    # get d_i/u_i for each peer in requests, rank in decreasing order
-    # give the peer with the most d_i/u_i u_i. Then iterate through sorted peers and give them all their u_i
-    # give the last person whatever you have left
 
     def requests(self, peers, history):
         """

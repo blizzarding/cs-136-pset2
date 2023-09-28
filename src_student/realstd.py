@@ -122,54 +122,45 @@ class RealStd(Peer):
             # change my internal state for no reason
             self.dummy_state["cake"] = "pie"
 
-            request = random.choice(requests) # requests is the list of people who requested from you
-            chosen = [request.requester_id]
-            # Evenly "split" my upload bandwidth among the one chosen requester
-            bws = even_split(self.up_bw, len(chosen))
-            '''how do we deal with things that aren't dividable? -> you divide as best as possible and prefer to give more to those earlier in the rankings'''
-
             '''to be deleted:'''
             # We're talking about one specific player p
-            # goal is to build up avg_download_from which will index by peer ids so that we can
+            # goal is to build up download_from which will index by peer ids so that we can
             # eventually sort by avg downloaded from rates (peers upload to RC)
-            # avg_download_from = [(0, 0) for i in range(len(peers))] # downloading from peers for the past two rounds
+            # download_from = [(0, 0) for i in range(len(peers))] # downloading from peers for the past two rounds
             '''End of bad code'''
 
             requesters = [request.requester_id for request in requests]
-            avg_download_from = {}
+            download_from = {}
             rounds = history.downloads[-2:]
-            
 
             for round in rounds:
                 for download in round:
-                    if download.from_id not in avg_download_from.keys():
-                        avg_download_from[download.from_id] = download.blocks
+                    if download.from_id not in download_from.keys():
+                        download_from[download.from_id] = download.blocks
                     else:
-                        avg_download_from[download.from_id] += download.blocks
+                        download_from[download.from_id] += download.blocks
 
-            # random.shuffle(rounds) # randomize order of lists; we randomize and then sort to break ties randomly!
-            # # either randomize requesters or we randomize rounds
-
-            preference = (sorted(avg_download_from.items(), key=lambda item: item[1], reverse = True))[:3]
+            download_from_list = download_from.items()
+            random.shuffle(download_from_list)
+            preference = (sorted(download_from_list, key=lambda item: item[1], reverse = True))[:3]
             # [(peer_id, numblocks), (peer_id, numblocks), (peer_id, numblocks)]
-            
+
+        '''TODO: LIZ FINISH OPTIMISTIC UNBLOCKING'''
+        # insert logic for defining the optimistic unblock here
+        request = random.choice(requests) # requests is the list of people who requested from you
+        optimistic_unblock = self.optimistic_unblock
+        
+        chosen = [item[0] for item in preference] + [optimistic_unblock]
+
+        # Evenly "split" my upload bandwidth among the 3 chosen requesters and the 1 optimistic unblock
+        '''how do we deal with things that aren't dividable? -> you divide as best as possible and prefer to give more to those earlier in the rankings'''
+        bws = even_split(self.up_bw, len(chosen + 1))
+
         # create actual uploads out of the list of peer ids and bandwidths
         uploads = [Upload(self.id, peer_id, bw)
                    for (peer_id, bw) in zip(chosen, bws)]
             
         return uploads
-
-        '''OLD CODE'''
-        # avg_download_from = {}
-        # rounds = self.AgentHistory.downloads[-2:] # for the reference client, the list of downloads (and who we're downloading from) for the last two rounds
-        # for round in rounds:
-        #     for download in round:
-        #         if download.from_id not in avg_download_from.keys():
-        #             avg_download_from[download.from_id] = download.blocks
-        #         else:
-        #             avg_download_from[download.from_id] += download.blocks
-        '''END OF OLD CODE'''
-        
 
         # for reference client, distribute bandwidth evenly
 
@@ -179,8 +170,6 @@ class RealStd(Peer):
         # have global var for the ID of the unblocked person -> 
 
         # do we need to filter peers by interested peers, i.e., those that want something from ref client?
-        
-        
 
         # order in decreasing order of av download rate received from peers, breaking ties at random
         # and excluding any peers that have not sent any data -> we already don't have peers that haven't sent any data

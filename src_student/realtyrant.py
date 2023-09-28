@@ -6,6 +6,31 @@
 # You'll want to copy this file to AgentNameXXX.py for various versions of XXX,
 # probably get rid of the silly logging messages, and then add more logic.
 
+# OVERALL LOGIC FOR BITTYRANT
+# exploit who is optimal to give to, so if someone is really generous, help them less because they'll still keep uploading to us
+# for each peer, estimate 
+# 1) if they unblock us, how much bandwidth will they give us? -> d_i
+# 2) how much we need to give them for them to unbloc us? -> u_i
+# after every round, compare d_i/u_i for each peer i 
+#     keep D dict and U dict for all peers and update after every round
+
+
+# ESTIMATING D_i and U_i
+# Estimating d_i:
+# CASE ONE: Peer i has never unblocked us before. make some assumptions about peer i 
+#         side note: (for tourney, can make "better" assumptions)
+# for tyrant, we can assume peer i is std client, i.e. they split bandwidth into 4 parts, and
+# assume their upload rate is equal to their download rate (since std. client is ~ tft)
+# d_i = ((total # of pieces they have)/(total # of rounds past))/4
+
+#CASE TWO: if peer i has unblocked us before, look at most recent time they've unblocked us, and set d_i to that value
+
+# Estimating u_i: how much do we have to give them?
+# Initialize u_i to some capacity. Book says to set to estimate capacity, e.g. 16 or max bandwidth/4
+# Case 1: If we unblock them, but they don't unblock us, u_i = 1.2 u_i -> increase u_i by 20%
+# Case 2: If they unblock us for previous r rounds in a row, u_i = (1- gamma)^r u_i where gamma = 0.1 and r = 3
+# Those parameters can be changed to optimize (or change gamme and r for tourney)
+# In all other cases, don't change u_i
 import random
 import logging
 
@@ -19,6 +44,13 @@ class RealTyrant(Peer):
         self.dummy_state = dict()
         self.dummy_state["cake"] = "lie"
     
+    # Requests overview for BitTyrant
+    # Requests () Method
+    # Look at all the requests 
+    # get d_i/u_i for each peer in requests, rank in decreasing order
+    # give the peer with the most d_i/u_i u_i. Then iterate through sorted peers and give them all their u_i
+    # give the last person whatever you have left
+
     def requests(self, peers, history):
         """
         peers: available info about the peers (who has what pieces)

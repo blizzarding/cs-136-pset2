@@ -18,7 +18,7 @@ class RealStd(Peer):
         print(("post_init(): %s here!" % self.id))
         self.dummy_state = dict()
         self.dummy_state["cake"] = "lie"
-        self.optimistic_unblock = ["", 0]
+        self.optimistic_unblock = None
         # can define additional global attributes here
         # can track who you're currently optimistically unblocking, can also check round #, how many times you've uploaded to, etc.
     
@@ -68,31 +68,45 @@ class RealStd(Peer):
         avail = dict()
         for peer in peers:
             for piece in peer.available_pieces:
-                if piece not in avail.keys:
-                    avail[piece] = 1
-                else:
-                    avail[piece] += 1
-
-        rarity = (sorted(avail.items(), key=lambda item: item[1]))
+                avail.setdefault(piece, [])
+                avail[piece].append(peer.id)
+        rarity = {}
+        for i in sorted(avail, key=lambda i: len(avail[i])):
+            rarity[i] = len(avail[i])
 
         # request all available pieces from all peers!
         # (up to self.max_requests from each)
         for peer in peers:
             av_set = set(peer.available_pieces)
-            isect = av_set.intersection(np_set)
+            isect = list(av_set.intersection(np_set))
             n = min(self.max_requests, len(isect))
+
+            random.shuffle(isect)
+            isect_sorted = sorted(isect, key=lambda x: rarity[x])
+
             # More symmetry breaking -- ask for random pieces.
             # This would be the place to try fancier piece-requesting strategies
             # to avoid getting the same thing from multiple peers at a time.
-            for piece_id in random.sample(isect, n):
+            for piece_id in random.sample(isect_sorted, n):
+                if peer.id in avail[piece_id]:
+                    start_block = self.pieces[piece_id]
+                    r = Request(self.id, peer.id, piece_id, start_block)
+                    requests.append(r)
+
+            #
                 # aha! The peer has this piece! Request it.
                 # which part of the piece do we need next?
                 # (must get the next-needed blocks in order)
-                start_block = self.pieces[piece_id]
-                r = Request(self.id, peer.id, piece_id, start_block)
-                requests.append(r)
-
+                
+                #r = Request(self.id, peer.id, piece_id, start_block)
+                #requests.append(r)
         return requests
+
+        # for peer in peers:
+        #   get intersection
+        #   shuffle intersection
+        #   sort interesection by rarity
+        #   request first n pieces from this list
 
     def uploads(self, requests, peers, history):
         """
@@ -105,14 +119,16 @@ class RealStd(Peer):
         In each round, this will be called after requests().
         """
 
-        round = history.current_round()
+        r = history.current_round()
         logging.debug("%s again.  It's round %d." % (
-            self.id, round))
+            self.id, r))
         # One could look at other stuff in the history too here.
         # For example, history.downloads[round-1] (if round != 0, of course)
         # has a list of Download objects for each Download to this peer in
         # the previous round.
-
+        preference = []
+        requesters = [request.requester_id for request in requests]
+        uploads = []
         if len(requests) == 0:
             logging.debug("No one wants my pieces!")
             chosen = []
@@ -129,56 +145,91 @@ class RealStd(Peer):
             # download_from = [(0, 0) for i in range(len(peers))] # downloading from peers for the past two rounds
             '''End of bad code'''
 
-            requesters = [request.requester_id for request in requests]
-            download_from = {}
-            rounds = history.downloads[-2:]
+            if 1 <= len(requests) <= 3:
+                bw_short = even_split(self.up_bw, len(requests))
+                for i, request in enumerate(requests):
+                    uploads.append(Upload(self.id, request.requester_id, bw_short[i]))
+            else:
+                download_from = {}
+                rounds = history.downloads[-2:]
+                for round in rounds:
+                    for download in round:
+                        if download.from_id not in download_from.keys():
+                            download_from[download.from_id] = download.blocks
+                        else:
+                            download_from[download.from_id] += download.blocks
 
-            for round in rounds:
-                for download in round:
-                    if download.from_id not in download_from.keys():
-                        download_from[download.from_id] = download.blocks
-                    else:
-                        download_from[download.from_id] += download.blocks
+                download_from_list = list(download_from.items())
+                random.shuffle(download_from_list)
+                preference = (sorted(download_from_list, key=lambda item: item[1], reverse = True))
 
-            download_from_list = download_from.items()
-            random.shuffle(download_from_list)
-            preference = (sorted(download_from_list, key=lambda item: item[1], reverse = True))[:3]
-            # [(peer_id, numblocks), (peer_id, numblocks), (peer_id, numblocks)]
+                bws = even_split(self.up_bw, 4)
+                uploaded = 0
+                for interested in download_from_list:
+                    if interested in requesters:
+                        uploads.append(Upload(self.id, interested, bws[uploaded]))
+                        requesters.remove(interested)
+                        uploaded += 1
+                    if uploaded == 3:
+                        break
+                while uploaded < 3:
+                    next = random.choice(requesters)
+                    uploads.append(Upload(self.id, next, bws[uploaded]))
+                    requesters.remove(next)
+                    uploaded += 1
 
-        '''TODO: LIZ FINISH OPTIMISTIC UNBLOCKING'''
-        # insert logic for defining the optimistic unblock here
-        request = random.choice(requests) # requests is the list of people who requested from you
-        optimistic_unblock = self.optimistic_unblock
-        
-        chosen = [item[0] for item in preference] + [optimistic_unblock]
-
-        # Evenly "split" my upload bandwidth among the 3 chosen requesters and the 1 optimistic unblock
-        '''how do we deal with things that aren't dividable? -> you divide as best as possible and prefer to give more to those earlier in the rankings'''
-        bws = even_split(self.up_bw, len(chosen + 1))
-
-        # create actual uploads out of the list of peer ids and bandwidths
-        uploads = [Upload(self.id, peer_id, bw)
-                   for (peer_id, bw) in zip(chosen, bws)]
-            
+                if r % 3 == 0 and r != 0:
+                    if len(requesters)!=0:
+                        self.optimistic_unblock = random.choice(requesters)
+                if r >= 3 and self.optimistic_unblock != None and (self.optimistic_unblock in requesters):
+                    uploads.append(Upload(self.id, self.optimistic_unblock, bws[3]))                        
+             
         return uploads
+                
 
-        # for reference client, distribute bandwidth evenly
+        #         # [(peer_id, numblocks), (peer_id, numblocks), (peer_id, numblocks)]
 
-        # everyone who sent request for piece is interested peers [requests]
-        # optimistic unblock: if get, then stay for 3 rounds max (or until they don't need it anymore)
-        # give them the option to have that spot for the next three rounds -> discrepancies
-        # have global var for the ID of the unblocked person -> 
+        #     '''TODO: LIZ FINISH OPTIMISTIC UNBLOCKING'''
+        #     # insert logic for defining the optimistic unblock here
+        #     if round == 0:
+        #             chosen = random.shuffle(requesters)[:4]
+        #     else:
+        #         if (len(preference) > 3):
+        #             if (round%3) == 0:
+        #                 self.optimistic_unblock = random.choice(preference[3:]) 
+        #                     # requests is the list of people who requested from you
+        #         optimistic_unblock = self.optimistic_unblock
+        #         chosen = [item[0] for item in preference[:3]] + [optimistic_unblock]
 
-        # do we need to filter peers by interested peers, i.e., those that want something from ref client?
+        #     # Evenly "split" my upload bandwidth among the 3 chosen requesters and the 1 optimistic unblock
+        #     '''how do we deal with things that aren't dividable? -> you divide as best as possible and prefer to give more to those earlier in the rankings'''
+        #     if chosen:
+                
+        #         uploads = [Upload(self.id, peer_id, bw)
+        #             for (peer_id, bw) in zip(chosen, bws)]
+        #     else:
+        #         uploads = []
 
-        # order in decreasing order of av download rate received from peers, breaking ties at random
-        # and excluding any peers that have not sent any data -> we already don't have peers that haven't sent any data
+        # # create actual uploads out of the list of peer ids and bandwidths
+        
 
-        # you take the maximum 3 and you put them in your uploads method (this is all in uploads)
+        # # for reference client, distribute bandwidth evenly
 
-        # you prefer to upload to people who upload to you
-        # you have 3 normal spots in your reference client to upload to people, and there's one optimistic
+        # # everyone who sent request for piece is interested peers [requests]
+        # # optimistic unblock: if get, then stay for 3 rounds max (or until they don't need it anymore)
+        # # give them the option to have that spot for the next three rounds -> discrepancies
+        # # have global var for the ID of the unblocked person -> 
 
-        # to unblock someone, you put their ID and their bandwidth in the uploads list
+        # # do we need to filter peers by interested peers, i.e., those that want something from ref client?
+
+        # # order in decreasing order of av download rate received from peers, breaking ties at random
+        # # and excluding any peers that have not sent any data -> we already don't have peers that haven't sent any data
+
+        # # you take the maximum 3 and you put them in your uploads method (this is all in uploads)
+
+        # # you prefer to upload to people who upload to you
+        # # you have 3 normal spots in your reference client to upload to people, and there's one optimistic
+
+        # # to unblock someone, you put their ID and their bandwidth in the uploads list
 
         

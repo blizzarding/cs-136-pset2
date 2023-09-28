@@ -10,7 +10,7 @@
 # exploit who is optimal to give to, so if someone is really generous, help them less because they'll still keep uploading to us
 # for each peer, estimate 
 # 1) if they unblock us, how much bandwidth will they give us? -> d_i
-# 2) how much we need to give them for them to unbloc us? -> u_i
+# 2) how much we need to give them for them to unblock us? -> u_i
 # after every round, compare d_i/u_i for each peer i 
 #     keep D dict and U dict for all peers and update after every round
 
@@ -43,6 +43,8 @@ class RealTyrant(Peer):
         print(("post_init(): %s here!" % self.id))
         self.dummy_state = dict()
         self.dummy_state["cake"] = "lie"
+        self.d = dict()
+        self.u = dict()
     
     # Requests overview for BitTyrant
     # Requests () Method

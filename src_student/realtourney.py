@@ -102,14 +102,15 @@ class RealTourney(Peer):
         In each round, this will be called after requests().
         """
 
-        round = history.current_round()
-        logging.debug("%s again.  It's round %d." % (
-            self.id, round))
+        r = history.current_round()
+        logging.debug("%s again.  It's round %d." % (self.id, r))
         # One could look at other stuff in the history too here.
         # For example, history.downloads[round-1] (if round != 0, of course)
         # has a list of Download objects for each Download to this peer in
         # the previous round.
-
+        preference = []
+        requesters = [request.requester_id for request in requests]
+        uploads = []
         if len(requests) == 0:
             logging.debug("No one wants my pieces!")
             chosen = []
@@ -119,13 +120,44 @@ class RealTourney(Peer):
             # change my internal state for no reason
             self.dummy_state["cake"] = "pie"
 
-            request = random.choice(requests)
-            chosen = [request.requester_id]
-            # Evenly "split" my upload bandwidth among the one chosen requester
-            bws = even_split(self.up_bw, len(chosen))
+            if 1 <= len(requests) <= 3:
+                bw_short = even_split(self.up_bw, len(requests))
+                for i, request in enumerate(requests):
+                    uploads.append(Upload(self.id, request.requester_id, bw_short[i]))
+            else:
+                download_from = {}
+                rounds = history.downloads[-2:]
+                for round in rounds:
+                    for download in round:
+                        if download.from_id not in download_from.keys():
+                            download_from[download.from_id] = download.blocks
+                        else:
+                            download_from[download.from_id] += download.blocks
 
-        # create actual uploads out of the list of peer ids and bandwidths
-        uploads = [Upload(self.id, peer_id, bw)
-                   for (peer_id, bw) in zip(chosen, bws)]
-            
+                download_from_list = list(download_from.items())
+                random.shuffle(download_from_list)
+                preference = (sorted(download_from_list, key=lambda item: item[1], reverse = True))
+
+                bws = even_split(self.up_bw, 4)
+                uploaded = 0
+                for interested in download_from_list:
+                    if interested in requesters:
+                        uploads.append(Upload(self.id, interested, bws[uploaded]))
+                        requesters.remove(interested)
+                        uploaded += 1
+                    if uploaded == 3:
+                        break
+                while uploaded < 3:
+                    next = random.choice(requesters)
+                    uploads.append(Upload(self.id, next, bws[uploaded]))
+                    requesters.remove(next)
+                    uploaded += 1
+
+                # change # of rounds
+                if r % 3 == 0 and r != 0:
+                    if len(requesters)!=0:
+                        self.optimistic_unblock = random.choice(requesters)
+                if r >= 3 and self.optimistic_unblock != None and (self.optimistic_unblock in requesters):
+                    uploads.append(Upload(self.id, self.optimistic_unblock, bws[3]))                        
+             
         return uploads

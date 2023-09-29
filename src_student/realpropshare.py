@@ -95,11 +95,12 @@ class RealPropShare(Peer):
         if round != 0:
             prev_round = history.downloads[round - 1]
             for download in prev_round:
-                from_id = download.from_id
-                if from_id not in download_from:
-                    download_from[from_id] = download.blocks
-                else:
-                    download_from[from_id] += download.blocks
+                if download.to_id == self.id:
+                    from_id = download.from_id
+                    if from_id not in download_from:
+                        download_from[from_id] = download.blocks
+                    else:
+                        download_from[from_id] += download.blocks
 
         bw_opt_unblock_share = 0.1
         total_bw = self.up_bw

@@ -19,6 +19,7 @@ class RealStd(Peer):
         self.dummy_state = dict()
         self.dummy_state["cake"] = "lie"
         self.optimistic_unblock = None
+        self.m = 4
         # can define additional global attributes here
         # can track who you're currently optimistically unblocking, can also check round #, how many times you've uploaded to, etc.
     
@@ -33,7 +34,7 @@ class RealStd(Peer):
         """
         needed = lambda i: self.pieces[i] < self.conf.blocks_per_piece
         needed_pieces = list(filter(needed, list(range(len(self.pieces)))))
-        np_set = set(needed_pieces)  # sets support fast intersection ops.
+        # np_set = set(needed_pieces)  # sets support fast intersection ops.
 
 
         logging.debug("%s here: still need pieces %s" % (
@@ -47,13 +48,14 @@ class RealStd(Peer):
         logging.debug("look at the AgentHistory class in history.py for details")
         logging.debug(str(history))
 
-        requests = []   # We'll put all the things we want here
         # Symmetry breaking is good...
         random.shuffle(needed_pieces)
         
         # Sort peers by id.  This is probably not a useful sort, but other 
         # sorts might be useful
-        peers.sort(key=lambda p: p.id)
+        # peers.sort(key=lambda p: p.id)
+
+        requests = []   # We'll put all the things we want here
 
         '''
         when you're requesting, you request rarest first
@@ -66,32 +68,38 @@ class RealStd(Peer):
         # you can request multiple pieces from the same peer (request all the time as much as possible)
         # you send requests in order of rarity within peers -> you request from everyone, and everyone can upload a different amount to you (but all in the same round)
         avail = dict()
-        for peer in peers:
-            for piece in peer.available_pieces:
-                avail.setdefault(piece, [])
-                avail[piece].append(peer.id)
-        rarity = {}
-        for i in sorted(avail, key=lambda i: len(avail[i])):
-            rarity[i] = len(avail[i])
+        for piece in needed_pieces:
+            for peer in peers:
+                if piece in peer.available_pieces:
+                    if piece in avail.keys():
+                        avail[piece] += 1
+                    else:
+                        avail[piece] = 1
+
+        rarity = list(dict(sorted(avail.items(), key=lambda x: x[1])).keys())
+        random.shuffle(peers)
+        #for i in sorted(avail, key=lambda i: len(avail[i])):
+            # rarity[i] = len(avail[i])
 
         # request all available pieces from all peers!
         # (up to self.max_requests from each)
         for peer in peers:
-            av_set = set(peer.available_pieces)
-            isect = list(av_set.intersection(np_set))
+            av_list = list(peer.available_pieces)
+            # find intersection
+            isect = [piece for piece in av_list if piece in needed_pieces]
             n = min(self.max_requests, len(isect))
 
+            # randomize to break ties
             random.shuffle(isect)
-            isect_sorted = sorted(isect, key=lambda x: rarity[x])
+            isect_sorted = sorted(isect, key=lambda x: rarity.index(x) if x in rarity else len(rarity))
 
             # More symmetry breaking -- ask for random pieces.
             # This would be the place to try fancier piece-requesting strategies
             # to avoid getting the same thing from multiple peers at a time.
-            for piece_id in random.sample(isect_sorted, n):
-                if peer.id in avail[piece_id]:
-                    start_block = self.pieces[piece_id]
-                    r = Request(self.id, peer.id, piece_id, start_block)
-                    requests.append(r)
+            for i in range(n):
+                start_block = self.pieces[isect_sorted[i]]
+                r = Request(self.id, peer.id, isect_sorted[i], start_block)
+                requests.append(r)
 
             #
                 # aha! The peer has this piece! Request it.
@@ -126,7 +134,7 @@ class RealStd(Peer):
         # For example, history.downloads[round-1] (if round != 0, of course)
         # has a list of Download objects for each Download to this peer in
         # the previous round.
-        preference = []
+        # preference = []
         requesters = [request.requester_id for request in requests]
         uploads = []
         if len(requests) == 0:
@@ -138,44 +146,44 @@ class RealStd(Peer):
             # change my internal state for no reason
             self.dummy_state["cake"] = "pie"
 
+            if round % 3 == 0 or self.optimistic_unblock not in requesters:
+                self.optimistic_unblock = None
+        
+
             if 1 <= len(requests) <= 3:
                 bw_short = even_split(self.up_bw, len(requests))
                 for i, request in enumerate(requests):
                     uploads.append(Upload(self.id, request.requester_id, bw_short[i]))
             else:
+                buddies = dict()
                 download_from = {}
                 rounds = history.downloads[-2:]
-                for round in rounds:
-                    for download in round:
-                        if download.from_id not in download_from.keys():
-                            download_from[download.from_id] = download.blocks
+                for download in rounds:
+                    # for download in round:
+                    if download.from_id in requesters and download.from_id is not self.optimistic_unblock:
+                        if download.from_id in buddies:   
+                            buddies[download.from_id] += 1
                         else:
-                            download_from[download.from_id] += download.blocks
+                            buddies = 1
+            
+            buddies = dict(sorted(buddies.items(), key=lambda x: x[1], reverse=True))
+            reciprocation = list(reciprocated_peers.keys())  
+            last_choice = [r for r in requesters if r not in reciprocation]
 
-                download_from_list = list(download_from.items())
-                random.shuffle(download_from_list)
-                preference = (sorted(download_from_list, key=lambda item: item[1], reverse = True))
+            picked = reciprocration[:self.m-1]
 
-                bws = even_split(self.up_bw, 4)
-                uploaded = 0
-                for interested in download_from_list:
-                    if interested in requesters:
-                        uploads.append(Upload(self.id, interested, bws[uploaded]))
-                        requesters.remove(interested)
-                        uploaded += 1
-                    if uploaded == 3:
-                        break
-                while uploaded < 3:
-                    next = random.choice(requesters)
-                    uploads.append(Upload(self.id, next, bws[uploaded]))
-                    requesters.remove(next)
-                    uploaded += 1
+            # optimistic unblocking
+            if self.optimistic_unblock is None and len(last_choice) >0:
+                self.optimistic_unblock = random.choice(last_choice)
+            
+            if self.optimistic_unblock is not None:
+                picked.append(self.optimistic_unblock)
+            
+            bws = even_split(self.up_bw, len(chosen))
 
-                if r % 3 == 0 and r != 0:
-                    if len(requesters)!=0:
-                        self.optimistic_unblock = random.choice(requesters)
-                if r >= 3 and self.optimistic_unblock != None and (self.optimistic_unblock in requesters):
-                    uploads.append(Upload(self.id, self.optimistic_unblock, bws[3]))                        
+            uploads = [Upload(self.id, peer_id, bw)
+                        for (peer_id, bw) in zip(chosen, bws)]
+            
              
         return uploads
                 

@@ -237,7 +237,7 @@ class RealTyrant(Peer):
                                     self.d[peer] = len(p.available_pieces) / 4
                     
                     else:
-                        self.d[peer] = download_blocks[j]
+                        self.d[peer] = past_downloads[peer]
 
                         if self.unblocked_me[peer] >= r:
                             self.u[peer] = self.u[peer] * (1-gamma)

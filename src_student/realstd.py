@@ -146,7 +146,7 @@ class RealStd(Peer):
             # change my internal state for no reason
             self.dummy_state["cake"] = "pie"
 
-            if round % 3 == 0 or self.optimistic_unblock not in requesters:
+            if r % 3 == 0 or self.optimistic_unblock not in requesters:
                 self.optimistic_unblock = None
         
 
@@ -158,58 +158,36 @@ class RealStd(Peer):
                 buddies = dict()
                 download_from = {}
                 rounds = history.downloads[-2:]
-                for download in rounds:
+                for round in rounds:
+                    for download in round:
                     # for download in round:
-                    if download.from_id in requesters and download.from_id is not self.optimistic_unblock:
-                        if download.from_id in buddies:   
-                            buddies[download.from_id] += 1
-                        else:
-                            buddies = 1
+                        if download.from_id in requesters and download.from_id is not self.optimistic_unblock:
+                            if download.from_id in buddies:   
+                                buddies[download.from_id] += 1
+                            else:
+                                buddies[download.from_id] = 1
             
-            buddies = dict(sorted(buddies.items(), key=lambda x: x[1], reverse=True))
-            reciprocation = list(reciprocated_peers.keys())  
-            last_choice = [r for r in requesters if r not in reciprocation]
+                buddies = dict(sorted(buddies.items(), key=lambda x: x[1], reverse=True))
+                reciprocation = list(buddies.keys())  
+                last_choice = [i for i in requesters if i not in reciprocation]
 
-            picked = reciprocration[:self.m-1]
+                picked = reciprocation[:self.m-1]
 
-            # optimistic unblocking
-            if self.optimistic_unblock is None and len(last_choice) >0:
-                self.optimistic_unblock = random.choice(last_choice)
-            
-            if self.optimistic_unblock is not None:
-                picked.append(self.optimistic_unblock)
-            
-            bws = even_split(self.up_bw, len(chosen))
+                # optimistic unblocking
+                if self.optimistic_unblock is None and len(last_choice) >0:
+                    self.optimistic_unblock = random.choice(last_choice)
+                
+                if self.optimistic_unblock is not None:
+                    picked.append(self.optimistic_unblock)
+                
+                bws = even_split(self.up_bw, len(picked))
 
-            uploads = [Upload(self.id, peer_id, bw)
-                        for (peer_id, bw) in zip(chosen, bws)]
+                uploads = [Upload(self.id, peer_id, bw)
+                            for (peer_id, bw) in zip(picked, bws)]
             
              
         return uploads
                 
-
-        #         # [(peer_id, numblocks), (peer_id, numblocks), (peer_id, numblocks)]
-
-        #     '''TODO: LIZ FINISH OPTIMISTIC UNBLOCKING'''
-        #     # insert logic for defining the optimistic unblock here
-        #     if round == 0:
-        #             chosen = random.shuffle(requesters)[:4]
-        #     else:
-        #         if (len(preference) > 3):
-        #             if (round%3) == 0:
-        #                 self.optimistic_unblock = random.choice(preference[3:]) 
-        #                     # requests is the list of people who requested from you
-        #         optimistic_unblock = self.optimistic_unblock
-        #         chosen = [item[0] for item in preference[:3]] + [optimistic_unblock]
-
-        #     # Evenly "split" my upload bandwidth among the 3 chosen requesters and the 1 optimistic unblock
-        #     '''how do we deal with things that aren't dividable? -> you divide as best as possible and prefer to give more to those earlier in the rankings'''
-        #     if chosen:
-                
-        #         uploads = [Upload(self.id, peer_id, bw)
-        #             for (peer_id, bw) in zip(chosen, bws)]
-        #     else:
-        #         uploads = []
 
         # # create actual uploads out of the list of peer ids and bandwidths
         

@@ -51,23 +51,44 @@ class RealTourney(Peer):
         # Sort peers by id.  This is probably not a useful sort, but other 
         # sorts might be useful
         peers.sort(key=lambda p: p.id)
+
+        '''MAKE TOURNEY REQUESTS RAREST FIRST'''
+
+        avail = dict()
+        for peer in peers:
+            for piece in peer.available_pieces:
+                avail.setdefault(piece, [])
+                avail[piece].append(peer.id)
+        rarity = {}
+        for i in sorted(avail, key=lambda i: len(avail[i])):
+            rarity[i] = len(avail[i])
+
         # request all available pieces from all peers!
         # (up to self.max_requests from each)
         for peer in peers:
             av_set = set(peer.available_pieces)
-            isect = av_set.intersection(np_set)
+            isect = list(av_set.intersection(np_set))
             n = min(self.max_requests, len(isect))
+
+            random.shuffle(isect)
+            isect_sorted = sorted(isect, key=lambda x: rarity[x])
+
             # More symmetry breaking -- ask for random pieces.
             # This would be the place to try fancier piece-requesting strategies
             # to avoid getting the same thing from multiple peers at a time.
-            for piece_id in random.sample(isect, n):
+            for piece_id in random.sample(isect_sorted, n):
+                if peer.id in avail[piece_id]:
+                    start_block = self.pieces[piece_id]
+                    r = Request(self.id, peer.id, piece_id, start_block)
+                    requests.append(r)
+
+            #
                 # aha! The peer has this piece! Request it.
                 # which part of the piece do we need next?
                 # (must get the next-needed blocks in order)
-                start_block = self.pieces[piece_id]
-                r = Request(self.id, peer.id, piece_id, start_block)
-                requests.append(r)
-
+                
+                #r = Request(self.id, peer.id, piece_id, start_block)
+                #requests.append(r)
         return requests
 
     def uploads(self, requests, peers, history):

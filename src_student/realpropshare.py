@@ -89,6 +89,21 @@ class Dummy(Peer):
         # has a list of Download objects for each Download to this peer in
         # the previous round.
 
+        uploads = []
+        download_from = {}
+
+        if round != 0:
+            prev_round = history.downloads[round - 1]
+            for download in prev_round:
+                from_id = download.from_id
+                if from_id not in download_from:
+                    download_from[from_id] = download.blocks
+                else:
+                    download_from[from_id] += download.blocks
+
+        bw_opt_unblock_share = 0.1
+        total_bw = self.up_bw
+
         if len(requests) == 0:
             logging.debug("No one wants my pieces!")
             chosen = []
@@ -98,13 +113,24 @@ class Dummy(Peer):
             # change my internal state for no reason
             self.dummy_state["cake"] = "pie"
 
-            request = random.choice(requests)
-            chosen = [request.requester_id]
-            # Evenly "split" my upload bandwidth among the one chosen requester
-            bws = even_split(self.up_bw, len(chosen))
+            requesters = [request.requester_id for request in requests]
+            upload_to = []
 
-        # create actual uploads out of the list of peer ids and bandwidths
-        uploads = [Upload(self.id, peer_id, bw)
-                   for (peer_id, bw) in zip(chosen, bws)]
+            for requester in requesters:
+                if requester in download_from.keys():
+                    upload_to.append(requester)
+
+            total_blocks = 0
+            for peer_id in upload_to:
+                total_blocks += download_from[peer_id]
+
+            for peer_id in upload_to:
+                share = (1 - bw_opt_unblock_share) * (float(download_from[peer_id] / total_blocks))
+                uploads.append(Upload(self.id, peer_id, int(share * total_bw)))
+                requesters.remove(peer_id)
+            
+            if len(requesters) > 0:
+                opt_unblock = random.choice(requesters)
+                uploads.append(Upload(self.id, opt_unblock, int(bw_opt_unblock_share * total_bw)))
             
         return uploads

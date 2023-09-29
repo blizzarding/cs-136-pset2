@@ -138,13 +138,6 @@ class RealStd(Peer):
             # change my internal state for no reason
             self.dummy_state["cake"] = "pie"
 
-            '''to be deleted:'''
-            # We're talking about one specific player p
-            # goal is to build up download_from which will index by peer ids so that we can
-            # eventually sort by avg downloaded from rates (peers upload to RC)
-            # download_from = [(0, 0) for i in range(len(peers))] # downloading from peers for the past two rounds
-            '''End of bad code'''
-
             if 1 <= len(requests) <= 3:
                 bw_short = even_split(self.up_bw, len(requests))
                 for i, request in enumerate(requests):

@@ -54,6 +54,8 @@ class RealTyrant(Peer):
         self.dummy_state["cake"] = "lie"
         self.d = dict()
         self.u = dict()
+        self.ratio = dict()
+        self.unblocked_me = dict()
     
     # Requests overview for BitTyrant
     # Requests () Method
@@ -94,24 +96,54 @@ class RealTyrant(Peer):
         # Sort peers by id.  This is probably not a useful sort, but other 
         # sorts might be useful
         peers.sort(key=lambda p: p.id)
+
+        '''
+        when you're requesting, you request rarest first
+        you request for pieces -> someone only has access to a piece if they have all blocks
+        you send a request for everything you can, with the bandwidth you have available
+        '''
+        # rarity is based off of pieces, not blocks
+        # in peer, there's something about available pieces
+        # you go through all peers, see all avail ones, manually count through how many of each block is avail, and then 
+        # you can request multiple pieces from the same peer (request all the time as much as possible)
+        # you send requests in order of rarity within peers -> you request from everyone, and everyone can upload a different amount to you (but all in the same round)
+        avail = dict()
+        for peer in peers:
+            for piece in peer.available_pieces:
+                avail.setdefault(piece, [])
+                avail[piece].append(peer.id)
+        rarity = {}
+        for i in sorted(avail, key=lambda i: len(avail[i])):
+            rarity[i] = len(avail[i])
+
         # request all available pieces from all peers!
         # (up to self.max_requests from each)
         for peer in peers:
             av_set = set(peer.available_pieces)
-            isect = av_set.intersection(np_set)
+            isect = list(av_set.intersection(np_set))
             n = min(self.max_requests, len(isect))
+
+            random.shuffle(isect)
+            isect_sorted = sorted(isect, key=lambda x: rarity[x])
+
             # More symmetry breaking -- ask for random pieces.
             # This would be the place to try fancier piece-requesting strategies
             # to avoid getting the same thing from multiple peers at a time.
-            for piece_id in random.sample(isect, n):
+            for piece_id in random.sample(isect_sorted, n):
+                if peer.id in avail[piece_id]:
+                    start_block = self.pieces[piece_id]
+                    r = Request(self.id, peer.id, piece_id, start_block)
+                    requests.append(r)
+
+            #
                 # aha! The peer has this piece! Request it.
                 # which part of the piece do we need next?
                 # (must get the next-needed blocks in order)
-                start_block = self.pieces[piece_id]
-                r = Request(self.id, peer.id, piece_id, start_block)
-                requests.append(r)
-
+                
+                #r = Request(self.id, peer.id, piece_id, start_block)
+                #requests.append(r)
         return requests
+
 
     def uploads(self, requests, peers, history):
         """
@@ -124,13 +156,23 @@ class RealTyrant(Peer):
         In each round, this will be called after requests().
         """
 
+        
         round = history.current_round()
+        requesters = [request.requester_id for request in requests]
         logging.debug("%s again.  It's round %d." % (
             self.id, round))
         # One could look at other stuff in the history too here.
         # For example, history.downloads[round-1] (if round != 0, of course)
         # has a list of Download objects for each Download to this peer in
         # the previous round.
+        uploads = []
+        if round == 0:
+            for peer in peers:
+                self.u[peer.id] = self.up_bw / 4
+                self.d[peer.id] = len(peer.available_pieces) / 4
+                self.unblocked_me[peer.id] = 0
+        unblocked = []
+        upload_bws = []
 
         if len(requests) == 0:
             logging.debug("No one wants my pieces!")
@@ -141,13 +183,66 @@ class RealTyrant(Peer):
             # change my internal state for no reason
             self.dummy_state["cake"] = "pie"
 
-            request = random.choice(requests)
-            chosen = [request.requester_id]
-            # Evenly "split" my upload bandwidth among the one chosen requester
-            bws = even_split(self.up_bw, len(chosen))
+            gamma = 0.1
+            r = 3
+            alpha = 0.2
 
-        # create actual uploads out of the list of peer ids and bandwidths
-        uploads = [Upload(self.id, peer_id, bw)
-                   for (peer_id, bw) in zip(chosen, bws)]
+            for peer in peers:
+                self.ratio[peer.id] = self.d[peer.id] / self.u[peer.id]
+            
+            limit = self.up_bw
+
+            while limit > 0 and len(self.ratio) > 0:
+                top_ratio = max(list(self.ratio.values()))
+                at_top = []
+                for k in self.ratio:
+                    if self.ratio[k] == top_ratio:
+                        at_top.append(k)
+                upload_to = random.choice(at_top)
+
+                if limit - self.u[upload_to] > 0 and upload_to in requesters:
+                    unblocked.append(upload_to)
+                    upload_bws.append(self.u[upload_to])
+                    limit -= self.u[upload_to] 
+                
+                self.ratio.pop(upload_to)
+        
+            if round != 0:
+                previous = history.downloads[round - 1]
+                past_downloads = {}
+
+                # here, we look at our downloads from peers in previous round
+                for download in previous:
+                    d = download.from_id
+                    if d not in past_downloads:
+                        past_downloads[d] = download.blocks
+                    else:
+                        past_downloads[d] += download.blocks
+
+                # here, we look at who unblocked us in last round
+                for peer in peers:
+                    p = peer.id
+                    if p in past_downloads:
+                        self.unblocked_me[p] += 1
+                    else:
+                        self.unblocked_me[p] = 0
+                
+                for peer in unblocked:
+                    if round > 0:
+                        if self.unblocked_me[peer] == 0:
+                            self.u[peer] = self.u[peer] * (1+ alpha)
+
+                            for p in peers:
+                                if p.id == peer:
+                                    self.d[peer] = len(p.available_pieces) / 4
+                    
+                    else:
+                        self.d[peer] = download_blocks[j]
+
+                        if self.unblocked_me[peer] >= r:
+                            self.u[peer] = self.u[peer] * (1-gamma)
+            
+        for i in range(len(unblocked)):
+            uploads.append(Upload(self.id, unblocked[i], upload_bws[i]))
             
         return uploads
